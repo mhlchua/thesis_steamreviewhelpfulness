@@ -1,0 +1,1100 @@
+---
+title: "Thesis"
+author: Larissa Chua (425256)
+output: html_notebook
+---
+Library
+```{r}
+library(dplyr, lib.loc="~/R/win-library/3.5")
+library(ggplot2,lib.loc="~/R/win-library/3.5")
+library(tidyverse, lib.loc="~/R/win-library/3.5")
+library("stringr", lib.loc="~/R/win-library/3.5")
+library("readr", lib.loc="~/R/win-library/3.5")
+
+```
+
+Load data
+```{r}
+setwd("C:/Users/Larissa/steam-scraper-master/steam-scraper-master/output")
+products <- read.csv("products_subset.csv",
+                     encoding = "UTF-8")
+                    
+products_free <- read.csv("products_subset_free.csv", encoding = "UTF-8")
+products_paid <- read.csv("products_subset_paid.csv", encoding = "UTF-8")
+
+table(products_free$price)
+table(products_paid$price)
+```
+
+
+Split data
+```{r}
+grep("Downloadable Content", products$specs, invert = T)
+         
+summary(products$price)
+
+#Filter out all non-english names in App name and developer
+EN_data <- products %>% 
+         mutate(Name = iconv(products$app_name, from = "latin1", to = "ASCII")) %>%
+  mutate(Dev = iconv(products$developer, from = "latin1", to = "ASCII")) %>%
+         filter(!is.na(Name)) %>% 
+  filter(!is.na(Dev))
+
+
+
+as.character(products$app_name)
+
+#create selection
+products_free2 <- EN_data %>% 
+  filter(price %in% c("Free", "Free To Play", "Free to Play")) %>% 
+  filter(!str_detect(specs, "Downloadable Content"),
+         !str_detect(specs, "Video Production"),
+         !str_detect(specs,"VR")) %>% 
+  filter(n_reviews >= 2500)
+
+products_paid2 <- EN_data %>% 
+  filter(!price %in% c("Free", "Free To Play", "Free to Play")) %>% 
+  filter(!str_detect(specs, "Downloadable Content"),
+         !str_detect(specs, "Video Production"),
+         !str_detect(specs, "oculus"),
+!str_detect(specs,"VR")) %>% 
+  filter(n_reviews >= 250)
+
+
+
+
+```
+
+random select
+```{r}
+set.seed(40558)
+free_games <- sample_n(products_free2, 30)
+
+set.seed(1000)
+paid_games <- sample_n(products_paid2, 30)
+
+set.seed(30)
+paid_games3 <- sample_n(products_paid2, 1)
+
+#data frame
+URL <- data.frame(URL_free = products_free2$reviews_url,
+                  URL_paid = paid_games$reviews_url)
+write_csv(URL, path = "url_products3.csv")
+
+URL3 <- data.frame(URL_paid = paid_games2$reviews_url)
+write_csv(URL3, path = "url_products4.csv")
+
+head(URL)
+```
+
+From json to df
+```{r eval=FALSE, include=FALSE}
+library("jsonlite", lib.loc="~/R/win-library/3.5")
+
+out <- lapply(readLines("reviews_new.jl"), fromJSON)
+
+#This is the paid game data
+jsonlite::stream_in(file("reviews_new.jl"))
+
+df <- jsonlite::stream_in(file("reviews_test.jl"))
+
+#free game data
+df <- jsonlite::stream_in(file("reviews_new.jl"))
+
+df2 <- jsonlite::stream_in(file("reviews_free.jl"))
+df3 <- jsonlite::stream_in(file("reviews_free2.jl"))
+df4 <- jsonlite::stream_in(file("reviews_free3.jl"))
+df5 <- jsonlite::stream_in(file("reviews_free4.jl"))
+df6 <- jsonlite::stream_in(file("reviews_paid2.jl"))
+```
+
+Pre-processing steps
+```{r eval=FALSE, include=FALSE}
+#dummy for free vs paid
+df <- df %>% mutate(paid_game = 1, free_game = 0)
+df2 <- df2 %>% mutate(paid_game = 0, free_game = 1)
+df3 <- df3 %>% mutate(paid_game = 0, free_game = 1)
+df4 <- df4 %>% mutate(paid_game = 0, free_game = 1)
+df5 <- df5 %>% mutate(paid_game = 0, free_game = 1)
+df6 <- df6 %>% mutate(paid_game = 1, free_game = 0)
+
+#replace NA's with 0's
+df <- df %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+df2 <- df2 %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+df3 <- df3 %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+df4 <- df4 %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+df5 <- df5 %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+df6 <- df6 %>% mutate_if(is.numeric, ~replace(., is.na(.), 0))
+
+#encode everything to utf-8
+
+as_utf8(df$text, normalize = FALSE)
+as_utf8(df2$text, normalize = FALSE)
+as_utf8(df3$text, normalize = FALSE)
+as_utf8(df4$text, normalize = FALSE)
+as_utf8(df5$text, normalize = FALSE)
+as_utf8(df6$text, normalize = FALSE)
+
+#date in format
+df2$date <- as.Date(df2$date, format= "%Y-%m-%d")
+df3$date <- as.Date(df3$date, format= "%Y-%m-%d")
+df4$date <- as.Date(df4$date, format= "%Y-%m-%d")
+df5$date <- as.Date(df5$date, format= "%Y-%m-%d")
+df6$date <- as.Date(df6$date, format= "%Y-%m-%d")
+
+```
+
+Put dataframes together
+```{r}
+
+df_en <-  rbind(df, df2, df3, df4, df5, df6)
+
+```
+
+Pre-processing part II
+```{r}
+#select english reviews
+
+library("cld3", lib.loc="~/R/win-library/3.5")
+library("cld2", lib.loc="~/R/win-library/3.5")
+
+df_en<- df_en %>% mutate(cld2 = cld2::detect_language(text = text, plain_text = FALSE), cld3 = cld3::detect_language(text = text)) 
+
+df_en <-  df_en %>% filter(cld2 == "en" & cld3 == "en")
+
+#date filtering
+
+df_en <- subset(df_en, date> "2018-9-01" & date < "2018-12-31")
+
+#standardize helpful votes
+
+sum(df_en$free_game) #4081 reviews
+sum(df_en$paid_game) #17632 reviews
+
+#26 paid games
+df_paid <- df_en %>% 
+  filter(paid_game == 1)
+unique(df_paid$product_id)
+
+df_free <- df_en %>% 
+  filter(free_game == 1) 
+unique(df_free$product_id)
+
+#count review text
+df_en <- df_en %>% 
+  mutate(nr_words = str_count(df_en$text, '\\s+')+1)
+
+#rename factor levels of compensation
+df_en$compensation <-  as.factor(df_en$compensation)
+
+df_en[is.na(df_en)] <- 0
+levels(df_en$compensation)[levels(df_en$compensation)=="Product received for free"] <- "1"
+
+
+```
+
+
+Sentiment + readability
+```{r}
+
+#readability
+library("koRpus", lib.loc="~/R/win-library/3.5")
+library("koRpus.lang.en", lib.loc="~/R/win-library/3.5")
+library("quanteda")
+
+write.table(df_en$text,"text_reviews.txt",sep="\t",row.names=FALSE)
+
+tagged <- lapply("text_reviews.txt", tokenize_sentences)
+tagged <- tokenize_sentences(df_en$text)
+head(tagged, n=50)
+
+tagged_sent <- tokenize_sentences("text_reviews.txt",lowercase = FALSE, strip_punct = FALSE,
+simplify = FALSE)
+
+readability_scores <- textstat_readability(df_en_full$text, measure=  c("Flesch", "Flesch.Kincaid", "FOG", "Coleman", "ARI", "SMOG"))
+
+
+
+ 
+```
+
+Sentiment
+```{r}
+library("tidytext", lib.loc="~/R/win-library/3.5")
+library("sentimentr", lib.loc="~/R/win-library/3.5")
+library(sentimentr)
+sentence <- get_sentences(df_en$text)
+
+#sentiment scores/valence
+sentiment_text <- sentiment_by(sentence)
+highlight(sentiment_text, file = file.path(tempdir(), "polarity.html"), open = TRUE,
+digits = 3)
+
+#emotion scores
+emotion_text <- emotion(sentence)
+emotion_text <- emotion_text %>% group_by(element_id) %>% 
+  summarise(ave_emotion = sum(emotion))
+
+#sentiment summary / plot
+library(ggplot2)
+qplot(sentiment_text$sentiment,   geom="histogram",binwidth=0.1,main="Review Sentiment Histogram")
+summary(sentiment_text)
+
+#neg/pos
+library("tidytext", lib.loc="~/R/win-library/3.5")
+
+df_en <- tibble::rowid_to_column(df_en, "ID")
+
+df_tidy <- tibble::rowid_to_column(df_en, "ID")
+
+token_df <- df_tidy %>% unnest_tokens(word, text)
+token_df <-  token_df %>%  anti_join(stop_words)
+
+#neg/pos 2
+token_df_2 <- token_df %>% 
+  inner_join(get_sentiments("bing"), by = "word") %>% 
+  count(ID, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+token_df_3 <- token_df %>% 
+  inner_join(get_sentiments("nrc"), by = "word") %>% 
+  count(ID, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+token_df_4 <- token_df %>% 
+  inner_join(get_sentiments("bing"), by = "word") %>% 
+  count(ID, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+
+token_df_2 <- token_df_2 %>% select(ID, negative, positive)
+
+#join dataframes
+df_en_full <- merge(x = df_en, y = token_df_2, by = "ID", all.x = TRUE)
+
+
+```
+
+POS and other word length stuff
+```{r}
+#packages
+install.packages (" openNLPmodels .en" , repos = " http://datacube .wu.ac.at /" , type = " source ")
+install.packages (" openNLP ")
+install.packages (" NLP ")
+
+install.packages (" tm ")
+install.packages (" stringr ")
+install.packages (" gsubfn ")
+install.packages (" plyr ")
+
+
+install.packages (" foo" , repos = " http :// datacube .wu.ac.at /" ,type = " source ")
+
+#load
+
+library("NLP", lib.loc="C:/Users/Laris/OneDrive/Documenten/R/win-library/3.5")
+
+
+#POS with udpipe
+
+library ( NLP )
+library(udpipe)
+
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+x <- udpipe_annotate(ud_model, x = df_en_full$text, doc_id = df_en_full$ID)
+x <- as.data.frame(x)
+
+#text analytics: count of all POS
+txt_freq <- txt_freq(x$upos)
+
+#get them in a good format
+
+#dummies
+pos <- fastDummies::dummy_cols(x$upos)
+
+x <-x %>% 
+  mutate(ADV = pos$.data_ADV,
+         VERB = pos$.data_VERB,
+         PRON = pos$.data_PRON,
+         AUX= pos$.data_AUX   ,
+         PROPN = pos$.data_PROPN,
+         PUNCT= pos$.data_PUNCT,
+         ADJ = pos$.data_ADJ,
+         NOUN = pos$.data_NOUN,
+        CCONJ = pos$.data_CCONJ,
+        ADP = pos$.data_ADP,
+        DET = pos$.data_DET,
+        NUM = pos$.data_NUM,
+        PART = pos$.data_PART,
+        SCONJ = pos$.data_SCONJ,
+        SYM = pos$.data_SYM,
+        INTJ = pos$.data_INTJ,
+        X = pos$.data_X )
+
+#aggregate by doc id's and sum up the dummies
+
+x2 <- x %>% select(doc_id, ADV, VERB, PRON, AUX, PROPN, PUNCT, ADJ, NOUN, CCONJ, ADP, DET, NUM, PART, SCONJ, SYM, INTJ, X) %>% 
+  group_by(doc_id) %>% 
+  summarise_each(funs(sum))
+
+#aggregate everything in df_full
+df_en_full <- df_en_full %>% 
+  mutate(ave_emotion = emotion_text$ave_emotion,
+         ave_sentiment = sentiment_text$ave_sentiment,
+         Flesch  = readability_scores$Flesch,
+         Flesch.Kincaid = readability_scores$Flesch.Kincaid,
+         FOG = readability_scores$FOG,
+         Coleman = readability_scores$Coleman,
+         ARI = readability_scores$ARI,
+         SMOG = readability_scores$SMOG,
+         ADV = x2$ADV,
+         VERB = x2$VERB,
+         PRON = x2$PRON,
+         AUX= x2$AUX,
+         PROPN = x2$PROPN ,
+         PUNCT= x2$PUNCT ,
+         ADJ = x2$ADJ,
+         NOUN = x2$NOUN,
+        CCONJ = x2$CCONJ,
+        ADP = x2$ADP,
+        DET = x2$DET,
+        NUM = x2$NUM,
+        PART = x2$PART,
+        SCONJ = x2$SCONJ,
+        SYM = x2$SYM,
+        INTJ = x2$INTJ,
+        X = x2$X)
+
+#no. sentences
+df_en_full$nsentence <- nsentence(df_en_full$text)
+
+#no. characters
+df_en_full$nchar <- nchar(df_en_full$text)
+
+#new wordcount
+df_en_full <- df_en_full %>% select(-nr_words)
+df_en_full$nwords <- sentiment_text$word_count
+
+#avg no words per sentence
+df_en_full[is.na(df_en_full)] <- 0
+df_en_full <- df_en_full %>% 
+  mutate(avg.word.sentence = nwords/nsentence,
+         avg.word.length = nchar/nwords,
+         prop.positive.words = positive/nwords,
+         prop.negative.words = negative/nwords,
+         prop.neutral.words = ((nwords - positive - negative) /nwords))
+
+#days since date
+scrape_date <- "2019-05-21"
+df_en_full$days_since <- as.Date(as.character(scrape_date), format="%Y-%m-%d")-as.Date(as.character(df_en_full$date, format="%Y-%m-%d"))
+
+library(dplyr)
+df_en_full2 <- df_en_full %>% 
+  filter(!product_id == 682130)
+
+
+```
+
+Aggregate product data with review data
+```{r}
+library(readr)
+
+products_full <- read_csv("~/Msc Marketing Management 2018-2019/Thesis R files/products.csv",  col_types = cols(gen_review_sentiment = col_factor(levels = c("Overwhelmingly negative", "Very negative", "Negative", "Mostly negative", "Mixed", "Mostly positive", "Positive", "Very positive", "Overwhelmingly positive"))))
+
+df_en_full2 <- merge(x = df_en_full2, y = products_full, by = "product_id")
+
+
+#replace NA's
+df_en_full2[is.na(df_en_full2)] <- 0
+
+#if compensation = 1, price = 0
+df_en_full2$price[df_en_full2$compensation == 1] <- 0
+
+table(df_en_full2$product_id)
+```
+
+
+Standardize target variable
+```{r}
+
+#scale
+df_en_full3 <- df_en_full2 %>% 
+  mutate( scaled_helpful = scale(df_en_full2$found_helpful, center = TRUE, scale = TRUE))
+
+
+#distribution 
+summary(df_en_full2)
+sum_0_found_helpful <- sum(df_en_full2$found_helpful == 0)
+sum_found_helpful <- sum(df_en_full2$found_helpful > 0)
+
+ggplot(df_en_full2, aes(x = found_helpful)) + geom_histogram(binwidth = 100,breaks = seq(0,1000, by = 100)) 
+
+#on log10 scale
+ggplot(df_en_full2, aes(x = found_helpful)) + geom_histogram(binwidth = 100,breaks = seq(0,1000, by = 50)) + scale_x_log10()
+
+#Distribution of helpful votes 1-100
+df_en_full2 %>% 
+  filter(found_helpful >0,
+         found_helpful <100) %>% 
+  ggplot(aes(x = found_helpful)) + geom_bar()
+
+#distribution more than 100 votes
+df_en_full2 %>% 
+  filter(found_helpful >100) %>% 
+  ggplot(aes(x = found_helpful)) + geom_bar(binwidth = 50)
+
+#----------------------------------------------------------------
+
+#scaled Distribution of helpful votes
+ggplot(df_en_full3, aes(x = scaled_helpful)) + geom_histogram(binwidth=50, breaks = seq(0,60, by = 2.5))
+
+ggplot(trans_df, aes(x = found_helpful)) + geom_histogram() +
+  labs(title = "Distribution of helpfulness votes")
+
+```
+
+Checking assumptions
+```{r}
+#boxplot hours, products
+b1 <- boxplot(melt.df1.1)
+print(b1)
+#find helpful and funny
+b2 <- boxplot(melt.df2.1)
+print(b2)
+#Readability
+b3 <- boxplot(melt.df3.1)
+print(b3)
+#POS
+b4 <- boxplot(melt.df4.1)
+print(b4)
+
+
+#density plot
+library(reshape2)
+
+melt.df1.1 <- df_en_full_ex[, 1:15]
+melt.df1 <- melt(melt.df1.1)
+
+melt.df2.1 <-  df_en_full_ex[, 16:26] 
+melt.df2 <- melt(melt.df2.1)
+
+
+melt.df3.1 <-  df_en_full_ex[, 27:37] 
+melt.df3 <- melt(melt.df3.1)
+
+melt.df4.1 <-  df_en_full_ex[, 38:43] 
+melt.df4 <- melt(melt.df4.1)
+
+melt.df5.1 <-  df_en_full_ex[, 51:53] 
+melt.df5 <- melt(melt.df5.1)
+
+library(ggplot2)
+density1 <- ggplot(data = melt.df1, aes(x = value)) + 
+stat_density() + 
+facet_wrap(~variable, scales = "free")
+print(density1)
+
+density2 <- ggplot(data = melt.df2, aes(x = value)) + 
+stat_density() + 
+facet_wrap(~variable, scales = "free")
+print(density2)
+
+density3 <- ggplot(data = melt.df3, aes(x = value)) + 
+stat_density() + 
+facet_wrap(~variable, scales = "free")
+print(density3)
+
+density4 <- ggplot(data = melt.df4, aes(x = value)) + 
+stat_density() + 
+facet_wrap(~variable, scales = "free")
+print(density4)
+
+density5 <- ggplot(data = melt.df5, aes(x = value)) + 
+stat_density() + 
+facet_wrap(~variable, scales = "free")
+print(density5)
+
+trans <- df_en_full_ex[,c(2,3,5,6,8,16:40)]
+
+#transform
+trans_df <- log10(trans + 1)
+
+df_train$Flesch <- scale(df_train$Flesch) 
+df_train$Flesch.kincaid <-scale(df_train$Flesch.kincaid)
+df_train$FOG <- scale(df_train$FOG)
+df_train$Coleman <- scale(df_train$Coleman)
+df_train$ARI <- scale(df_train$ARI)
+df_train$SMOG <- scale(df_train$SMOG)
+
+df_test$Flesch <- scale(df_test$Flesch) 
+df_test$Flesch.kincaid <-scale(df_test$Flesch.kincaid)
+df_test$FOG <- scale(df_test$FOG)
+df_test$Coleman <- scale(df_test$Coleman)
+df_test$ARI <- scale(df_test$ARI)
+df_test$SMOG <- scale(df_test$SMOG)
+
+trans_df$Flesch <- scale(trans_df$Flesch) 
+trans_df$Flesch.kincaid <-scale(trans_df$Flesch.kincaid)
+trans_df$FOG <- scale(trans_df$FOG)
+trans_df$Coleman <- scale(trans_df$Coleman)
+trans_df$ARI <- scale(trans_df$ARI)
+trans_df$SMOG <- scale(trans_df$SMOG)
+trans_df$days_since <- scale(trans_df$days_since)
+
+df_zinb_train$Flesch <- scale(df_zinb_train$Flesch) 
+df_zinb_train$Flesch.Kincaid <-scale(df_zinb_train$Flesch.Kincaid)
+df_zinb_train$FOG <- scale(df_zinb_train$FOG)
+df_zinb_train$Coleman <- scale(df_zinb_train$Coleman)
+df_zinb_train$ARI <- scale(df_zinb_train$ARI)
+df_zinb_train$SMOG <- scale(df_zinb_train$SMOG)
+df_zinb_train$days_since <- scale(df_zinb_train$days_since)
+
+trans_df <- trans_df %>% 
+  mutate(ave_sentiment = df_en_full_ex$ave_sentiment,
+         recommended = df_en_full_ex$recommended,
+         early_access = df_en_full_ex$early_access,
+         Free_or_paid = df_en_full_ex$Free_or_paid,
+         days_since = df_en_full_ex$days_since,
+         total_reviews = df_en_full_ex$total_reviews,
+         price = df_en_full_ex$price,
+         Flesch = df_en_full_ex$Flesch,
+         Flesch.kincaid = df_en_full_ex$Flesch.Kincaid,
+         FOG = df_en_full_ex$FOG,
+         Coleman = df_en_full_ex$Coleman,
+         ARI = df_en_full_ex$ARI,
+         SMOG = df_en_full_ex$SMOG,
+         Genre.Strategy = as.factor(df_en_full_ex$Genre.Strategy),
+         Genre.Mass.Multiplayer = as.factor(df_en_full_ex$Genre.Mass.Multiplayer),
+         Genre.Battle.Royale = as.factor(df_en_full_ex$Genre.Battle.Royale),
+         Genre.Indie = as.factor(df_en_full_ex$Genre.Indie),
+         Genre.Adventure = as.factor(df_en_full_ex$Genre.Adventure),
+         Genre.RPG = as.factor(df_en_full_ex$Genre.RPG),
+         Genre.action = as.factor(df_en_full_ex$Genre.action))
+
+
+
+#zero variance
+library(caret)
+nearZeroVar(trans_df, saveMetrics = T
+)
+
+trans_df <-  trans_df %>%  
+  select(-neutral) %>% 
+  mutate(positive = df_en_full3$positive,
+         negative =  df_en_full3$negative,
+         helpful_unscaled = df_en_full_ex$found_helpful)
+
+df_en_full_ex<- df_en_full_ex %>%  
+  mutate(neutral = df_en_full_ex$nwords - df_en_full_ex$positive - df_en_full_ex$negative)
+
+trans_df <- trans_df %>%  
+  mutate(neutral = df_en_full_ex$neutral)
+
+trans_df <- trans_df %>%  
+  mutate(positive = log(positive +1),
+           negative = log(negative +1),
+           neutral = log(neutral+1))
+
+
+
+#correlation plot
+
+
+library(corrplot)
+library(RColorBrewer)
+trans_df$days_since <- as.numeric(trans_df$days_since)
+Trans <- trans_df %>% 
+  select(-recommended, -early_access, -Free_or_paid, -Genre.Mass.Multiplayer, -Genre.action, -Genre.Battle.Royale, -Genre.Indie, -Genre.Adventure, -Genre.RPG, -Genre.Strategy)
+M <-cor(Trans)
+corrplot(M, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+
+cor_num <- cor(Trans, method = "pearson")
+round(cor_num, 2)
+
+
+```
+
+
+Data analysis
+```{r}
+#releveling the interaction variable
+df_en_full3$paid_game <- factor(df_en_full3$paid_game)
+levels(df_en_full3$paid_game)
+
+library(plyr
+        )
+df_en_full3$paid_game <- revalue(df_en_full3$paid_game, c("0"="Free", "1"="Paid"))
+
+View(df_en_full3)
+
+library(dplyr)
+
+colnames(df_en_full_ex)
+names(df_en_full3)[names(df_en_full3) == "paid_game"] <- "Free_or_paid"
+
+#Split randomly
+prop_train <- 0.7
+library(caret)
+set.seed(1)
+ind_train <- createDataPartition(y = trans_df$found_helpful, 
+                                 p = prop_train)
+df_train <- trans_df %>% slice(ind_train$Resample1)
+df_test <- trans_df %>% slice(-ind_train$Resample1)
+
+ggplot(df_train, aes( x = found_helpful)) + geom_histogram() + labs(title = "Distribution of training set")
+ 
+ggplot(df_test, aes( x = found_helpful)) + geom_histogram() + labs(title = "Distribution of test set")
+
+table(df_train$found_helpful)
+
+#Variable sets
+#set a - Peri
+
+#hours + products + found_funny + days_since + recommended
+
+#set b - Central
+
+#ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  
+
+
+#set c - Both
+#hours + products + found_funny + days_since + recommended + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG 
+
+#control vars
+#Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access
+
+#interaction
+#Free_or_paid
+
+```
+
+Zero-inflated
+```{r}
+  
+#Zero-inflated models
+
+df_en_full3$paid_game <- as.factor(df_en_full3$paid_game)
+library(dplyr)
+df_en_full_ex <- df_en_full3 %>% 
+  select(-page, -page_order, -product_id, -ID, -date, -text, -user_id, -username, -cld2, -cld3,-negative, - positive, -game, -scaled_helpful, -free_game, -compensation, -gen_review_sentiment, -Early.Access)
+
+#Poisson model 1a
+
+library(pscl)
+summary(model1a <- zeroinfl(helpful_unscaled ~ hours + products + found_funny + days_since + recommended + early_access + price  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price , data = df_train))
+
+
+summary(model1a1 <- glm(helpful_unscaled ~ ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG , family = poisson, data = df_train))
+
+vuong(model1a, model1a1)
+
+
+#for RMSE, scale to log10
+pred.poisson.1a <- predict(model1a, df_test)
+
+RMSE.poisson.1a <- sqrt(mean((log10(test.pred.forest + 1)-log10(df_test$helpful_unscaled + 1))^2))
+
+df_train <- df_train %>% 
+  mutate(pos = ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X,
+         readability = + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG)
+
+
+#model 1b
+summary(model1b <- zeroinfl(helpful_unscaled ~ ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, dist = "negbin", data = df_train))
+
+
+#model 1c
+summary(model1a <- zeroinfl(helpful_unscaled ~hours + products + found_funny + days_since + recommended + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  , data = df_train))
+
+#----------USE THIS ----------------binomial
+library(dplyr)
+df_en_full_ex <- df_en_full_ex %>% 
+  mutate(positive = df_en_full3$positive,
+         negative =  df_en_full3$negative,
+         neutral = positive-negative)
+  
+prop_train <- 0.7
+
+set.seed(1)
+ind_train <- createDataPartition(y = df_en_full_ex$found_helpful, 
+                                 p = prop_train)
+df_zinb_train <- df_en_full_ex %>% slice(ind_train$Resample1)
+df_zinb_test <- df_en_full_ex %>% slice(-ind_train$Resample1)
+
+
+#model 2a
+df_zinb_train$days_since <- as.numeric(df_zinb_train$days_since)
+model1a <- zeroinfl(helpful_unscaled ~ hours + products + found_funny + days_since + recommended + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, dist = "negbin", EM = TRUE)
+
+library(MASS)
+summary(model2a2 <- glm.nb(helpful_unscaled ~  hours + products + found_funny + days_since + recommended + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + early_access, data = df_zinb_train))
+
+vuong(model2a, model2a2)
+
+pred.nb.1a <- predict(model1a, df_test)
+
+RMSE.nb.1a <- sqrt(mean((log10(pred.nb.1a + 1)-log10(df_test$helpful_unscaled + 1))^2))
+
+#model 2b
+model1b <- zeroinfl(helpful_unscaled ~ ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive +neutral+ negative + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price  + early_access, data = df_train, dist = "negbin", EM = TRUE)
+
+pred.nb.1b <- predict(model1b, df_test)
+
+RMSE.nb.1b <- sqrt(mean((log10(pred.nb.1b + 1)-log10(df_test$helpful_unscaled + 1))^2))
+
+
+#model 2c
+model1c <- zeroinfl(helpful_unscaled ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words+neutral + prop.neutral.words + positive + negative + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG+ Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + early_access, data = df_train, dist = "negbin", EM = TRUE)
+
+pred.nb.1c <- predict(model1c, df_test)
+
+RMSE.nb.1c <- sqrt(mean((log10(pred.nb.1c + 1)-log10(df_test$helpful_unscaled + 1))^2))
+
+
+coef <- coef(model1c)
+coef <- exp(coef((model1c)))
+coef <- matrix(coef, ncol = 2)
+rownames(coef) <- names(coef(model1c)[1:51])
+colnames(coef) <- c("Count_model","Zero_inflation_model")
+tidy_model1c <- data.frame(terms = model1c$terms,
+  coefficients = model1c$coefficients,
+                           residuals = model1c$residuals,
+                           fitted.values = model1c$fitted.values)
+write.csv(coef, file = "coef.1c.csv")
+model1c$optim
+
+coef2 <- coef(model1a)
+coef2<- exp(coef((model1a)))
+coef2 <- matrix(coef2, ncol = 2)
+rownames(coef2) <- names(coef(model1a)[1:16])
+colnames(coef2) <- c("Count_model","Zero_inflation_model")
+write.csv(coef2, file = "coef.1a.csv")
+
+coef3 <- coef(model1b)
+coef3<- exp(coef((model1b)))
+coef3 <- matrix(coef3, ncol = 2)
+rownames(coef3) <- names(coef(model1b)[1:46])
+colnames(coef3) <- c("Count_model","Zero_inflation_model")
+write.csv(coef3, file = "coef.1b.csv")
+
+```
+
+Random forest
+```{r}
+#Random Forest
+library(rpart)
+library(randomForest)
+
+#model 3a
+model2a <- randomForest(found_helpful ~ hours + products + found_funny + days_since + recommended, data = df_train, importance = T, ntree = 1000)
+
+model2a <- caret::train(found_helpful ~ hours + products +found_funny + days_since + recommended, data = df_train, method = "rf", tuneLength = 20, trControl = ctrl)
+
+test.pred.forest <- predict(model2a,df_test)
+RMSE.forest.2a <- sqrt(mean((test.pred.forest-df_test$found_helpful)^2))
+
+RMSE.forest
+
+#with caret
+#model 3a
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F,
+                     search = "random")
+mtry <- sqrt(ncol(x))
+
+
+model3a <- train(found_helpful ~ hours + products + found_funny + days_since + recommended + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "rf", trControl = ctrl, metric = "RMSE")
+
+rfpred1 <- predict(model3a, df_test)
+RMSE.rf.3a <- sqrt(mean((rfpred1-df_test$found_helpful)^2))
+
+
+#model 3b
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model3b <- train(found_helpful ~ ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  
+ + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "rf", trControl = ctrl,metric = "RMSE")
+
+rfpred2 <- predict(model3b, df_test)
+RMSE.rf.3b <- sqrt(mean((rfpred2-df_test$found_helpful)^2))
+
+
+#model 3c
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model3c <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "rf", trControl = ctrl, metric = "RMSE")
+
+rfpred3 <- predict(model3c, df_test)
+RMSE.rf.3c <- sqrt(mean((rfpred3-df_test$found_helpful)^2))
+
+
+  
+```
+
+
+
+Xgboost
+
+```{r}
+library(data.table)
+library(mlr)
+
+#model 3a
+dt_test <- setDT(df_test)
+dt_train <- setDT(df_train)
+  
+labels <- dt_train$found_helpful 
+ts_label <- df_test$found_helpful
+new_tr <- model.matrix(~.+0,data = dt_train[,-c("found_helpful"),with=F]) 
+
+new_ts <- model.matrix(~.+0,data = dt_test[,-c("found_helpful"),with=F])
+
+library(xgboost)
+dtrain <- xgb.DMatrix(data = new_tr,label = labels) 
+dtest <- xgb.DMatrix(data = new_ts,label=ts_label)
+
+
+#parameters
+params <- list(booster = "gbtree", objective = "reg:linear", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
+
+params1 <- list(booster = "gblinear", objective = "reg:linear", eta=0.3, gamma=3, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=0.5)
+
+
+xgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 250, nfold = 10, showsd = T, stratified = T, maximize = F, early_stopping_rounds = 20)
+#best iteration = 53
+
+xgb1 <- xgb.train (params = params1, data = dtrain, nrounds = 53, watchlist = list(val=dtest,train=dtrain), maximize = F)
+
+xgbpred <- predict (xgb1,dtest)
+
+RMSE.xgb.3a <- sqrt(mean((xgbpred-df_test$found_helpful)^2))
+
+#with caret model 1
+library(caret)
+library(randomForest)
+library(dplyr)
+library(xgboost)
+tune_grid <- expand.grid(eta = 0.1, max_depth = 1:3, 
+                         colsample_bytree = c(0.5, 0.6), subsample = 1, 
+                         nrounds = c(200, 500, 1000), gamma = 0,
+                         min_child_weight = 1)
+
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model4a <- train(found_helpful ~ hours + products + found_funny + days_since + recommended + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred1 <- predict(model4a, df_test)
+RMSE.xgb.4a <- sqrt(mean((xgbpred1-df_test$found_helpful)^2))
+print(model4a)
+
+#model 4b
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model4b <- train(found_helpful ~ ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  
+ + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred2 <- predict(model4b, df_test)
+RMSE.xgb.4b <- sqrt(mean((xgbpred2-df_test$found_helpful)^2))
+
+model4b <- train(found_helpful ~ ave_emotion + ave_sentiment  + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  
+ + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred2b <- predict(model4b, df_test)
+RMSE.xgb.4b <- sqrt(mean((xgbpred2b-df_test$found_helpful)^2))
+
+
+#model 4c
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model4c <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred3 <- predict(model4c, df_test)
+RMSE.xgb.4c <- sqrt(mean((xgbpred3-df_test$found_helpful)^2))
+
+
+```
+
+Alternative model
+```{r}
+model.alt.b <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment +prop.positive.words +prop.negative.words+ prop.neutral.words + positive + nsentence + nchar+ avg.word.length + ADV + PRON + AUX + PROPN + PUNCT +SCONJ+ ADJ + ARI + SMOG  +  Genre.Mass.Multiplayer+Flesch +Coleman +Flesch.kincaid + FOG + Genre.action  + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+xgbpred7 <- predict(model.alt.b, df_test)
+RMSE.xgb.alt.b <- sqrt(mean((xgbpred7-df_test$found_helpful)^2))
+
+model.alt.b2 <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment +prop.positive.words +prop.negative.words+ prop.neutral.words + positive + nsentence + nchar+ avg.word.length + ADV + PRON + AUX + PROPN + PUNCT +SCONJ+ ADJ + ARI + SMOG  +  Genre.Mass.Multiplayer+Flesch +Coleman +Flesch.kincaid + FOG + Genre.action  + total_reviews + early_access +Free_or_paid, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+xgbpred8 <- predict(model.alt.b2, df_test)
+RMSE.xgb.alt.b2 <- sqrt(mean((xgbpred8-df_test$found_helpful)^2))
+
+model.alt <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment +prop.positive.words +prop.negative.words+ prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.length + ADV + PRON + AUX + PROPN + PUNCT +SCONJ+ ADJ + ADP + NUM + ARI + SMOG  +  Genre.Mass.Multiplayer+Flesch +Coleman +Flesch.kincaid + FOG+ Genre.Adventure + Genre.RPG + Genre.action + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+xgbpred5 <- predict(model.alt, df_test)
+RMSE.xgb.alt <- sqrt(mean((xgbpred5-df_test$found_helpful)^2))
+
+xgbpred7 <- predict(model.alt.b, df_test)
+RMSE.xgb.alt.b <- sqrt(mean((xgbpred7-df_test$found_helpful)^2))
+
+model.alt2 <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment +prop.positive.words +prop.negative.words+ prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.length + ADV + PRON + AUX + PROPN + PUNCT +SCONJ+ ADJ + ADP + NUM + ARI + SMOG  +  Genre.Mass.Multiplayer+Flesch +Coleman +Flesch.kincaid + FOG+ Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access +Free_or_paid, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred6 <- predict(model.alt2, df_test)
+RMSE.xgb.alt2 <- sqrt(mean((xgbpred6-df_test$found_helpful)^2))
+#***********************************8should try this*****************************************
+model.alt <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.neutral.words + positive + negative + nsentence + nchar+ nwords + avg.word.length + ADV + PRON + AUX + PROPN + PUNCT + ADJ + ADP + NUM + SYM + INTJ + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access +Free_or_paid, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred5 <- predict(model.alt, df_test)
+RMSE.xgb.alt <- sqrt(mean((xgbpred5-df_test$found_helpful)^2))
+
+model.alt.content <- train(found_helpful ~ ave_emotion + ave_sentiment + prop.neutral.words + positive + negative + nsentence + nchar+ nwords + avg.word.length + ADV + PRON + AUX + PROPN + PUNCT + ADJ + ADP + NUM + SYM + INTJ + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred6 <- predict(model.alt.content, df_test)
+RMSE.xgb.alt.con <- sqrt(mean((xgbpred6-df_test$found_helpful)^2))
+
+
+
+```
+
+
+For RQ2
+```{r}
+
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model5 <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access + Free_or_paid, data = df_train, method = "xgbTree", trControl = ctrl,tuneGrid = tune_grid, metric = "RMSE")
+
+xgbpred4 <- predict(model5, df_test)
+RMSE.xgb.5 <- sqrt(mean((xgbpred4-df_test$found_helpful)^2))
+
+#part in two, then run model on all for variable importance
+df_free <- trans_df  %>% 
+  filter(Free_or_paid == "Free")
+df_paid <- trans_df  %>% 
+  filter(Free_or_paid == "Paid")
+
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model.rf.free <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_free, method = "rf", trControl = ctrl, metric = "RMSE", importance = T)
+
+caret::varImp(model.rf.free)
+
+set.seed(8575)
+ctrl <- trainControl(method = "cv", number = 10, classProbs = F)
+
+model.rf.paid <- train(found_helpful ~ hours + products + found_funny + days_since + recommended  + ave_emotion + ave_sentiment + prop.negative.words + prop.positive.words + prop.neutral.words + positive + negative + neutral + nsentence + nchar+ nwords + avg.word.sentence + avg.word.length + ADV + VERB + PRON + AUX + PROPN + PUNCT + ADJ + NOUN + CCONJ + ADP + DET + NUM + PART + SCONJ + SYM + INTJ + X + Flesch + Flesch.kincaid + FOG + Coleman + ARI + SMOG  + Genre.Strategy + Genre.Mass.Multiplayer + Genre.Battle.Royale + Genre.Indie + Genre.Adventure + Genre.RPG + Genre.action + price + total_reviews + early_access, data = df_paid, method = "rf", trControl = ctrl, metric = "RMSE", importance = T)
+
+library(randomForest)
+varImpPlot(model3c, sort = T, n.var = 51, scale = T, main = "Variable importance plot for model 2c", type = 1)
+
+
+
+```
+
+Dalex
+```{r}
+plot.model <- data.frame(Model = c("Model1a", "Model 1b",
+                     "Model1c", "Model2a",
+                     "Model2b", "Model2c",
+                     "Model3a", "Model3b",
+                     "Model3c"),
+           Features = c("(a) Peripheral", "(b) Central", " (c) Peripheral + Central","(a) Peripheral", "(b) Central", " (c) Peripheral + Central","(a) Peripheral", "(b) Central", " (c) Peripheral + Central"),
+           RMSE = c(0.294, 0.436, 0.286,
+                    0.2424, 0.3321, 0.2423,
+                    0.2442, 0.3272, 0.2420
+                    ),
+           Method = c("Model 1:ZINB", "Model 1:ZINB","Model 1:ZINB","Model 2:RandomForest","Model 2:RandomForest","Model 2:RandomForest", "Model 3:XGBoost", "Model 3:XGBoost", "Model 3:XGBoost"))
+
+ggplot(plot.model, aes(x = Method, y = RMSE, fill = Model)) + geom_bar(stat = "identity")
+
+df <- melt(plot.model, id = c("Method", "RMSE", "Features"))
+
+library(RColorBrewer)
+ggplot() + geom_bar(data = df, aes(x = Method, y = RMSE, fill = Features), position = "dodge", stat = "identity") + theme_classic() + labs(title = "RMSE comparison across models")
+
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(reshape2)
+
+pred.data <- data.frame(Actual = df_test$found_helpful,
+           Predicted.1c = log10(pred.nb.1c + 1),
+           Predicted.2c = rfpred3,
+           Predicted.3c = xgbpred3,
+           Actual.value = df_test$found_helpful)
+pred.data.melt <- melt(pred.data, id = "Actual")
+
+ggplot(pred.data.melt, aes(x = value, y = Actual, color = variable)) + geom_smooth() +theme_bw() +
+  scale_color_manual("Model", values = c("cornflowerblue", "darkmagenta", "darkolivegreen4", "red"), labels = c("Model 1c: ZINB", "Model 2c: RandomForest", "Model 3c: XGBoost", "Actual values")) +labs(title = "Model comparison: Actual vs. predicted values",
+                  x = "Predicted values of helpfulness votes",
+                  y = "Actual values of helpfulness votes")
+  
+
+
+library(DALEX)
+explainer_paid <- explain(model.rf.free, data = df.free.reviews)
+explainer_free <- explain(model.rf.paid, data = df.paid.reviews)
+
+#DALEX breakdown is out of order, use iBreakdown
+
+obs <- trans_df[sample(nrow(df_train), 1), ]
+  
+library(iBreakDown)
+explain_paid <- iBreakDown::break_down(explainer_paid, new_observation = obs )
+
+predict.function <- function(model.rf.free, new_observation) predict(model.rf.free, new_observation, type="response")[,2]
+predict.function(model.rf.free, df_train[11,])
+#> [1] 0.888
+library(breakDown)
+explain_1 <- broken(model.rf.free, data = df_train, df_train[11,], baseline = "Intercept")
+
+plot(explain_1b) + ggtitle("Breakdown plot for predicted review helpfulness")
+
+predict.function <- function(model.rf.free, new_observation) predict(model.rf.free, new_observation, type="response")
+predict.function(model.rf.free, df.free.reviews[11,])
+#> [1] 0.888
+
+predict.function <- function(model.rf.paid, new_observation) predict(model.rf.paid, new_observation, type="response")
+predict.function(model.rf.paid, df_train[11,c(-53, -4, -34)])
+vec <- as.vector(df_train[11,])
+explain_paid <- broken(model.rf.paid, df.paid.reviews[11,], data = df.paid.reviews,
+                    predict.function = predict.function, 
+                    direction = "down")
+
+explain_paid <- broken(model.rf.paid, df.paid.reviews[11, c(-53, -4, -34)], data = df.paid.reviews[,c(-53, -4, -34)],
+                    predict.function = predict.function, 
+                    direction = "down")
+
+plot(explain_paid) + ggtitle("Breakdown plot for predicted review helpfulness - model4b")
+df.free.reviews2 <- df.free.reviews %>% 
+  select(-helpful_unscaled, - Free_or_paid)
+
+model3c
+ library(xgboost)
+library(Matrix)
+model_martix_train <- model.matrix(found_helpful ~ . , df_train2)
+data_train <- xgb.DMatrix(model_martix_train, label = df_train2$found_helpful)
+param <- list(objective = "reg:linear")
+
+plot_xgb_model <- xgb.train(param, data_train, nrounds = 50)
+
+nobs <- model_martix_train[1L, , drop = FALSE]
+df_train2 <- df_train %>% 
+  select(-helpful_unscaled, - Free_or_paid)
+explain_xgb <- broken(plot_xgb_model, new_observation = nobs, data = df_train2)
+
+explain <- as.data.frame(explain_paid)
+expl.free <- data.frame(variable = explain_free$variable, 
+                        contribution.free = explain_free$contribution,
+                        contribution.paid = explain_paid$contribution)
+explain_paid$position
+
+
+```
