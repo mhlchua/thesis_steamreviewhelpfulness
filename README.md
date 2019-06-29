@@ -1,4 +1,4 @@
-# thesis_steamreviewhelpfulnesss
+# Thesis: Predicting the helpfulness of Steam reviews
 This repository includes the files and code used for my thesis about <i> Predicting the helpfulness of Steam reviews using peripheral and central features and a distinction between free and paid games </i> for Rotterdam School of Management, Erasmus University Rotterdam (MSc. Marketing Management).
 
 Little notes on the files:
